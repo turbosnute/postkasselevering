@@ -19,7 +19,6 @@ function New-ICS {
         [Parameter(Mandatory=$true)][string]$Description,
         [Parameter(Mandatory=$true)][ValidateSet('Private', 'Public', 'Confidential')][string]$Visibility = 'Public',
         [Parameter(Mandatory=$true)][ValidateSet('Free', 'Busy')]$ShowAs = 'Busy'
-
     )
     
     begin {
@@ -33,10 +32,6 @@ function New-ICS {
         $EventDescription = "Postbudet kommer."
 
 @"
-BEGIN:VCALENDAR
-VERSION:2.0
-METHOD:PUBLISH
-PRODID:-//JHP//We love PowerShell!//EN
 BEGIN:VEVENT
 UID: $([guid]::NewGuid())
 CREATED: $((Get-Date).ToUniversalTime().ToString($icsDateFormat))
@@ -52,7 +47,6 @@ SUMMARY: $Subject
 LOCATION: $Location
 TRANSP:$(if($ShowAs -eq 'Free') {'TRANSPARENT'})
 END:VEVENT
-END:VCALENDAR
 "@
 
     }
@@ -62,8 +56,10 @@ END:VCALENDAR
 }
 
 
+$postCode = 7066
 
-$res = Invoke-WebRequest -Uri "https://www.posten.no/levering-av-post-2020/_/component/main/1/leftRegion/1?postCode=7066" `
+
+$res = Invoke-WebRequest -Uri "https://www.posten.no/levering-av-post-2020/_/component/main/1/leftRegion/1?postCode=$postCode" `
 -Headers @{
 "User-Agent"="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36"
   "x-requested-with"="XMLHttpRequest"
@@ -105,7 +101,7 @@ if ($res.StatusCode -eq 200) {
 
     $deliverydays = ($res.Content | ConvertFrom-Json).nextDeliveryDays
     
-    foreach ($stringDate in $deliverydays) {
+    $ical = foreach ($stringDate in $deliverydays) {
         $match = $regex.Match($stringDate)
 
         if (($match.Groups[1].success) -and ($match.Groups[2].success)) {
@@ -118,10 +114,18 @@ if ($res.StatusCode -eq 200) {
             }
 
            $deliveryDate = Get-Date "$year-$deliveryMonth-$deliveryday"
-           "$year-$deliveryMonth-$deliveryday"
+           #"$year-$deliveryMonth-$deliveryday"
            $lastday = $deliveryday
-           $deliveryday
+           $start = $deliveryDate
+           $end = $deliveryDate.AddDays(1)
+           Write-Output "BEGIN:VCALENDAR"
+           Write-Output "VERSION:2.0"
+           Write-Output "METHOD:PUBLISH"
+           Write-Output "PRODID:-//JHP//We love PowerShell!//EN"
+           New-ICSevent -Location $postCode -Subject "Postlevering for $postCode" -Description "Postbudet lever post i dag" -Start $start -End $end -Visibility 'Public' -ShowAs 'Free'
+           Write-Output "END:VCALENDAR"
         }
     }
-
 }
+
+$ical
