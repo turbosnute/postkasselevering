@@ -1,14 +1,16 @@
+param(
+    $postnr,
+    $outfile
+)
 <#
 .SYNOPSIS
-    Short description
+    Generates ICS file for post delivery dates. (Posten Norway)
 .DESCRIPTION
-    Long description
+    Generates ICS file for post delivery dates based on post code. (Posten Norway)
 .EXAMPLE
-    Example of how to use this cmdlet
-.EXAMPLE
-    Another example of how to use this cmdlet
+    ./postkasselevering.ps1 -postnr 7010
 #>
-function New-ICS {
+function New-ICSevent {
     [CmdletBinding()]
     [OutputType([String])]
     param(
@@ -20,46 +22,39 @@ function New-ICS {
         [Parameter(Mandatory=$true)][ValidateSet('Private', 'Public', 'Confidential')][string]$Visibility = 'Public',
         [Parameter(Mandatory=$true)][ValidateSet('Free', 'Busy')]$ShowAs = 'Busy'
     )
-    
+
     begin {
     }
-    
+
     process {
         $icsDateFormat = "yyyyMMddTHHmmssZ"
 
-        $postnr = 7066
         $Subject = "Postkasselevering"
         $EventDescription = "Postbudet kommer."
 
-@"
-BEGIN:VEVENT
-UID: $([guid]::NewGuid())
-CREATED: $((Get-Date).ToUniversalTime().ToString($icsDateFormat))
-DTSTAMP: $((Get-Date).ToUniversalTime().ToString($icsDateFormat))
-LAST-MODIFIED: $((Get-Date).ToUniversalTime().ToString($icsDateFormat))
-CLASS:$Visibility
-CATEGORIES:$($Category -join ',')
-SEQUENCE:0
-DTSTART: $($Start.ToUniversalTime().ToString($icsDateFormat))
-DTEND: $($End.ToUniversalTime().ToString($icsDateFormat))
-DESCRIPTION: $Description
-SUMMARY: $Subject
-LOCATION: $Location
-TRANSP:$(if($ShowAs -eq 'Free') {'TRANSPARENT'})
-END:VEVENT
-"@
-
+        Write-Output "BEGIN:VEVENT"
+        Write-Output "UID:$([guid]::NewGuid())"
+        Write-Output "CREATED:$((Get-Date).ToUniversalTime().ToString($icsDateFormat))"
+        Write-Output "DTSTAMP:$((Get-Date).ToUniversalTime().ToString($icsDateFormat))"
+        Write-Output "LAST-MODIFIED:$((Get-Date).ToUniversalTime().ToString($icsDateFormat))"
+        Write-Output "CLASS:$Visibility"
+        Write-Output "CATEGORIES:$($Category -join ',')"
+        Write-Output "SEQUENCE:0"
+        Write-Output "DTSTART:$($Start.ToUniversalTime().ToString($icsDateFormat))"
+        Write-Output "DTEND:$($End.ToUniversalTime().ToString($icsDateFormat))"
+        Write-Output "DESCRIPTION:$Description"
+        Write-Output "SUMMARY:$Subject"
+        Write-Output "LOCATION:$Location"
+        Write-Output "TRANSP:$(if($ShowAs -eq 'Free') {'TRANSPARENT'})"
+        Write-Output "END:VEVENT"
     }
-    
+
     end {
     }
 }
 
 
-$postCode = 7066
-
-
-$res = Invoke-WebRequest -Uri "https://www.posten.no/levering-av-post-2020/_/component/main/1/leftRegion/1?postCode=$postCode" `
+$res = Invoke-WebRequest -Uri "https://www.posten.no/levering-av-post-2020/_/component/main/1/leftRegion/1?postCode=$postnr" `
 -Headers @{
 "User-Agent"="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/87.0.4280.88 Safari/537.36"
   "x-requested-with"="XMLHttpRequest"
@@ -75,7 +70,7 @@ $res = Invoke-WebRequest -Uri "https://www.posten.no/levering-av-post-2020/_/com
 } `
 -ContentType "application/json"
 
-if ($res.StatusCode -eq 200) {
+$ics = if ($res.StatusCode -eq 200) {
 
     # RegEx
     [regex]$regex = " (\d{1,2})\. ([a-z]+)$"
@@ -100,32 +95,33 @@ if ($res.StatusCode -eq 200) {
     $year = $lastday.Year
 
     $deliverydays = ($res.Content | ConvertFrom-Json).nextDeliveryDays
-    
-    $ical = foreach ($stringDate in $deliverydays) {
-        $match = $regex.Match($stringDate)
 
-        if (($match.Groups[1].success) -and ($match.Groups[2].success)) {
-            $deliveryday = $match.Groups[1].Value
-            $deliveryMonth = $month[$match.Groups[2].Value]
-
-            # Check if last day of year.
-            if (($lastday.Month -eq 12) -and ($lastday.day -eq 31) -and ($deliveryday -ne 31)) {
-                $year++
-            }
-
-           $deliveryDate = Get-Date "$year-$deliveryMonth-$deliveryday"
-           #"$year-$deliveryMonth-$deliveryday"
-           $lastday = $deliveryday
-           $start = $deliveryDate
-           $end = $deliveryDate.AddDays(1)
+    if ($deliverydays.count -ne 0) {             
            Write-Output "BEGIN:VCALENDAR"
            Write-Output "VERSION:2.0"
            Write-Output "METHOD:PUBLISH"
-           Write-Output "PRODID:-//JHP//We love PowerShell!//EN"
-           New-ICSevent -Location $postCode -Subject "Postlevering for $postCode" -Description "Postbudet lever post i dag" -Start $start -End $end -Visibility 'Public' -ShowAs 'Free'
+           Write-Output "PRODID:-//TurboSnute//Postkasselevering//EN"
+           foreach ($stringDate in $deliverydays) {
+             $match = $regex.Match($stringDate)
+             if (($match.Groups[1].success) -and ($match.Groups[2].success)) {
+               $deliveryday = $match.Groups[1].Value
+               $deliveryMonth = $month[$match.Groups[2].Value]
+               #write-host -foregroundcolor green $deliveryday
+               #write-host -foregroundcolor red $($lastday.month)
+               # Check if last day of year.
+               if ($deliveryMonth -lt $lastday.Month) {
+                   $year++
+               }
+               $deliveryDate = Get-Date "$year-$deliveryMonth-$deliveryday"
+               #"$year-$deliveryMonth-$deliveryday"
+               $lastday = $deliveryDate
+               $start = $deliveryDate
+               $end = ($deliveryDate.AddDays(1)).AddHours(-4)
+               New-ICSevent -Location $postnr -Subject "Postlevering for $postCode" -Description "Postbudet lever post i dag" -Start $start -End $end -Visibility 'Public' -ShowAs 'Free'
+             } #end if
+           } #end foreach
            Write-Output "END:VCALENDAR"
-        }
-    }
+    } #end if
 }
 
-$ical
+$ics -replace "`n", "`r`n" | out-file -path $outfile
