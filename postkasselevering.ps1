@@ -112,11 +112,11 @@ $ics = if ($res.StatusCode -eq 200) {
                if ($deliveryMonth -lt $lastday.Month) {
                    $year++
                }
-               $deliveryDate = Get-Date "$year-$deliveryMonth-$deliveryday"
+               $deliveryDate = Get-Date "$year-$deliveryMonth-$deliveryday 11:00:00"
                #"$year-$deliveryMonth-$deliveryday"
                $lastday = $deliveryDate
                $start = $deliveryDate
-               $end = ($deliveryDate.AddDays(1)).AddHours(-4)
+               $end = $deliveryDate.AddHours(3)
                New-ICSevent -Location $postnr -Subject "Postlevering for $postCode" -Description "Postbudet lever post i dag" -Start $start -End $end -Visibility 'Public' -ShowAs 'Free'
              } #end if
            } #end foreach
