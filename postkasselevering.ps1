@@ -1,5 +1,5 @@
 param(
-    $postal_code,
+    $postnr,
     $outfile
 )
 <#
@@ -56,7 +56,7 @@ function New-ICSevent {
 #
 # Find API-key
 #
-$postal_code = "7010"
+$postal_code = $postnr
 
 $url = "https://www.posten.no/levering-av-post"
 $regex_pattern = 'data-react4xp-ref="parts_mailbox-delivery__\S*"\s*type="application\/json">([^<]+)<\/script>'
